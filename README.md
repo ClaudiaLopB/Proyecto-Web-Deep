@@ -131,6 +131,12 @@ Si no hay `ANTHROPIC_API_KEY`, el programa usa el modo automático. Si el agente
 
 `ejemplos/accidentes_plan.json` es un plan de referencia escrito a mano con las mismas herramientas que usa el agente. Sirve para comparar con lo que propone el agente.
 
+## Web publicada (GitHub Pages)
+
+El dashboard de `web/index.html` se publica en **https://claudialopb.github.io/Proyecto-Web-Deep/**. El workflow `.github/workflows/pages.yml` lo vuelve a publicar cada vez que cambia `web/` en `main`.
+
+Para activarlo la primera vez, la dueña del repositorio va a *Settings → Pages* y en *Source* elige **GitHub Actions**.
+
 ## Ver la web en local
 
 `web/index.html` es el dashboard de ejemplo ya generado. Para verlo en el navegador:
