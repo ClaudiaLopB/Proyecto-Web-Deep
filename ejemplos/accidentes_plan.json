@@ -10,6 +10,7 @@
     {"op": "fecha", "columna": "fecha", "formato": "%d/%m/%Y", "motivo": "Fecha guardada como texto dd/mm/aaaa"}
   ],
   "dashboard": {
+    "pie": "Plan de ejemplo hecho a mano con las herramientas del agente de Proyecto-Web-Deep.",
     "titulo": "Accidentes de tráfico urbanos: ¿dónde poner el esfuerzo?",
     "subtitulo": "Qué factores se asocian a que un accidente acabe con heridos. 9.200 atestados municipales, 2023-2025.",
     "filtros": ["fecha", "distrito", "tipo_accidente", "interseccion", "implicado_vulnerable", "limite_velocidad_kmh", "estado_firme", "alumbrado"],

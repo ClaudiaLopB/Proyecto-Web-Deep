@@ -9,7 +9,8 @@ La especificación es un diccionario que puede escribir el agente de IA o el mod
   "graficos": [{"tipo": "barras" | "tasa" | "histograma" | "linea_tiempo" | "calor",
                 "titulo": str, "x": str, "y": str, "color": str,
                 "columna": str, "valor": str, "tramos": [números], "explicacion": str}],
-  "hallazgos": [str]
+  "hallazgos": [str],
+  "pie": str  (opcional, texto del pie de página)
 }
 """
 
@@ -84,6 +85,7 @@ def build_dashboard(session: Session, spec: dict, output: str | Path) -> Path:
         "__TITLE__": html.escape(spec.get("titulo") or "Dashboard"),
         "__SUBTITLE__": html.escape(spec.get("subtitulo") or ""),
         "__SOURCE__": html.escape(session.path.name),
+        "__FOOTER__": html.escape(spec.get("pie") or "Dashboard generado por el agente de Proyecto-Web-Deep."),
         "__DATA__": _json_for_script(data),
         "__SPEC__": _json_for_script(spec),
         "__QUALITY__": _json_for_script(quality),
@@ -184,7 +186,7 @@ footer { max-width: 1280px; margin: 0 auto; padding: 0 16px 30px; color: var(--m
     </section>
   </div>
 </main>
-<footer>Fuente: __SOURCE__ · Dashboard generado automáticamente por el agente de proyecto-deep-agente.</footer>
+<footer>Fuente: __SOURCE__ · __FOOTER__</footer>
 <script>
 const DATA = __DATA__;
 const SPEC = __SPEC__;
