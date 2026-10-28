@@ -1,0 +1,42 @@
+{
+  "_nota": "Plan de ejemplo para datos/accidentes_urbanos.csv, escrito a mano con las mismas herramientas que usa el agente (las cifras de los hallazgos salen de agente.datos.query). Regenerar con: python -m agente datos/accidentes_urbanos.csv --spec ejemplos/accidentes_plan.json",
+  "limpieza": [
+    {"op": "a_nulo", "columna": "velocidad_estimada_kmh", "valores": [-99], "motivo": "-99 aparece 518 veces: es un código de 'no consta', no una velocidad"},
+    {"op": "a_nulo", "columna": "alumbrado", "valores": ["N/D"], "motivo": "'N/D' significa sin dato"},
+    {"op": "normalizar_categorias", "columna": "tipo_accidente", "motivo": "18 formas de escribir 5 tipos (mayúsculas, tildes, espacios)"},
+    {"op": "normalizar_categorias", "columna": "con_lesiones", "motivo": "Usa 'si' sin tilde; el resto de columnas sí/no usan 'sí'"},
+    {"op": "rango_valido", "columna": "edad_conductor", "min": 14, "max": 100, "motivo": "Edades imposibles (hasta 54.000 años)"},
+    {"op": "rango_valido", "columna": "visibilidad_m", "min": null, "max": 2550, "motivo": "Visibilidades imposibles (hasta 143.000 m)"},
+    {"op": "fecha", "columna": "fecha", "formato": "%d/%m/%Y", "motivo": "Fecha guardada como texto dd/mm/aaaa"}
+  ],
+  "dashboard": {
+    "titulo": "Accidentes de tráfico urbanos: ¿dónde poner el esfuerzo?",
+    "subtitulo": "Qué factores se asocian a que un accidente acabe con heridos. 9.200 atestados municipales, 2023-2025.",
+    "filtros": ["fecha", "distrito", "tipo_accidente", "interseccion", "implicado_vulnerable", "limite_velocidad_kmh", "estado_firme", "alumbrado"],
+    "kpis": [
+      {"etiqueta": "Accidentes", "tipo": "conteo"},
+      {"etiqueta": "Con heridos", "tipo": "tasa", "columna": "con_lesiones", "valor": "sí"},
+      {"etiqueta": "Con usuario vulnerable", "tipo": "tasa", "columna": "implicado_vulnerable", "valor": "sí"},
+      {"etiqueta": "En intersección", "tipo": "tasa", "columna": "interseccion", "valor": "sí"},
+      {"etiqueta": "Velocidad media estimada (km/h)", "tipo": "media", "columna": "velocidad_estimada_kmh"}
+    ],
+    "graficos": [
+      {"tipo": "tasa", "titulo": "% con heridos según la velocidad del impacto", "x": "velocidad_estimada_kmh", "tramos": [0, 20, 30, 40, 50, 60, 80, 200], "columna": "con_lesiones", "valor": "sí", "color": "implicado_vulnerable", "ancho_completo": true, "explicacion": "Las barras están desglosadas por si hay un peatón, ciclista o motorista implicado. La gravedad crece con la velocidad en los dos grupos, y para los vulnerables sube mucho antes."},
+      {"tipo": "tasa", "titulo": "% con heridos por tipo de accidente", "x": "tipo_accidente", "columna": "con_lesiones", "valor": "sí", "color": "interseccion", "explicacion": "Compara la gravedad dentro y fuera de intersecciones para cada tipo."},
+      {"tipo": "tasa", "titulo": "% con heridos según el entorno: estado del firme", "x": "estado_firme", "columna": "con_lesiones", "valor": "sí", "explicacion": "El firme deslizante o mojado se asocia a algo más de gravedad; ojo, 'deslizante' tiene pocos casos."},
+      {"tipo": "tasa", "titulo": "% con heridos según el alumbrado", "x": "alumbrado", "columna": "con_lesiones", "valor": "sí", "explicacion": "Apenas hay diferencias. 455 registros con 'N/D' quedan fuera."},
+      {"tipo": "tasa", "titulo": "% con heridos según la visibilidad (m)", "x": "visibilidad_m", "tramos": [0, 50, 100, 150, 250, 2600], "columna": "con_lesiones", "valor": "sí", "explicacion": "La visibilidad no separa los accidentes graves de los leves."},
+      {"tipo": "calor", "titulo": "Dónde se concentran los accidentes: tipo × distrito", "x": "distrito", "y": "tipo_accidente", "explicacion": "Número de accidentes por combinación. El reparto es muy parecido entre distritos."},
+      {"tipo": "barras", "titulo": "Accidentes por tipo", "x": "tipo_accidente", "horizontal": true, "color": "con_lesiones", "explicacion": "Volumen de cada tipo, separando los que tuvieron heridos."},
+      {"tipo": "linea_tiempo", "titulo": "Accidentes por mes", "x": "fecha", "color": "con_lesiones", "ancho_completo": true, "explicacion": "Evolución mensual; el último mes puede estar incompleto."}
+    ],
+    "hallazgos": [
+      "La velocidad es el factor que más pesa: con impactos por debajo de 20 km/h solo el 5,6 % de los accidentes tiene heridos; entre 50 y 60 km/h, el 47,8 %; por encima de 80 km/h, el 75,1 %.",
+      "La protección del usuario vulnerable multiplica el efecto: con peatón, ciclista o motorista implicado hay heridos en el 49,5 % de los casos, frente al 17,7 % sin él. Entre 30 y 50 km/h la diferencia es del 60,1 % frente al 17,6 %.",
+      "El límite señalizado (30, 50 o 70 km/h) no cambia la proporción de heridos (27-28 %); lo que importa es la velocidad real del impacto. Esto encaja con que el límite general a 30 km/h ya tenga poco recorrido.",
+      "Las intersecciones concentran el 43 % de los accidentes y son un poco más graves (29,2 % con heridos, frente al 26,2 % en tramos). Donde más se nota es con usuarios vulnerables: 53,3 % frente al 46,6 %.",
+      "De las condiciones del entorno, solo el firme se asocia a más gravedad (35,3 % con heridos si está deslizante, frente al 25,9 % si está seco). El alumbrado y la visibilidad apenas cambian el resultado.",
+      "Limitaciones: la velocidad es una estimación del atestado que no se revisa a mano y falta en 518 casos (registrados como -99); podría estimarse a la baja o al alza según la gravedad. Son asociaciones, no efectos causales."
+    ]
+  }
+}
