@@ -14,6 +14,11 @@ from .dashboard import build_dashboard, validate_spec
 
 
 def main(argv: list[str] | None = None) -> int:
+    # La consola de Windows usa cp1252 y no puede imprimir emojis: forzamos UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(prog="agente", description="Convierte un CSV en un dashboard interactivo.")
     parser.add_argument("csv", type=Path, help="archivo CSV de entrada")
     parser.add_argument("--contexto", type=Path, help="documentación del dataset (PDF o texto) para el agente")
