@@ -8,7 +8,9 @@ La especificación es un diccionario que puede escribir el agente de IA o el mod
   "kpis": [{"etiqueta": str, "tipo": "conteo" | "media" | "tasa", "columna": str, "valor": str}],
   "graficos": [{"tipo": "barras" | "tasa" | "histograma" | "linea_tiempo" | "calor",
                 "titulo": str, "x": str, "y": str, "color": str,
-                "columna": str, "valor": str, "tramos": [números], "explicacion": str}],
+                "columna": str, "valor": str, "tramos": [números], "explicacion": str,
+                "pestana": str (opcional, nombre de una de "pestanas")}],
+  "pestanas": [{"nombre": str, "descripcion": str}]  (opcional; sin ella no hay barra de pestañas),
   "hallazgos": [str],
   "pie": str  (opcional, texto del pie de página)
 }
@@ -45,6 +47,16 @@ def validate_spec(session: Session, spec: dict) -> list[str]:
                 errors.append(f"gráfico '{chart.get('titulo')}': columna inexistente '{chart[key]}' en '{key}'")
         if chart.get("tipo") == "tasa" and not (chart.get("columna") and chart.get("valor") is not None):
             errors.append(f"gráfico '{chart.get('titulo')}': una tasa necesita 'columna' y 'valor'")
+    tabs = spec.get("pestanas") or []
+    names = [t.get("nombre") for t in tabs if isinstance(t, dict)]
+    if len(names) != len(tabs) or not all(names):
+        errors.append("pestanas: cada pestaña necesita un 'nombre'")
+    if len(set(names)) != len(names):
+        errors.append("pestanas: hay nombres de pestaña repetidos")
+    for chart in spec.get("graficos", []):
+        tab = chart.get("pestana")
+        if tab and tab not in names:
+            errors.append(f"gráfico '{chart.get('titulo')}': la pestaña '{tab}' no está en 'pestanas'")
     if not spec.get("graficos"):
         errors.append("el dashboard necesita al menos un gráfico")
     return errors
@@ -86,6 +98,7 @@ def build_dashboard(session: Session, spec: dict, output: str | Path) -> Path:
         "__SUBTITLE__": html.escape(spec.get("subtitulo") or ""),
         "__SOURCE__": html.escape(session.path.name),
         "__FOOTER__": html.escape(spec.get("pie") or "Dashboard generado por el agente de Proyecto-Web-Deep."),
+        "__TABS__": _tabs_html(spec),
         "__DATA__": _json_for_script(data),
         "__SPEC__": _json_for_script(spec),
         "__QUALITY__": _json_for_script(quality),
@@ -94,6 +107,33 @@ def build_dashboard(session: Session, spec: dict, output: str | Path) -> Path:
         page = page.replace(key, value)
     output.write_text(page, encoding="utf-8")
     return output
+
+
+def _tabs_html(spec: dict) -> str:
+    """Barra de pestañas y un panel por pestaña; sin 'pestanas', una sola rejilla de gráficos (como antes).
+
+    El JS coloca cada gráfico en el panel de su pestaña y gestiona la selección, el teclado y el hash.
+    """
+    tabs = [t for t in spec.get("pestanas") or [] if isinstance(t, dict) and t.get("nombre")]
+    if not tabs:
+        return '<div class="charts"></div>'
+    buttons, panels = [], []
+    for k, tab in enumerate(tabs):
+        name = html.escape(tab["nombre"])
+        selected = "true" if k == 0 else "false"
+        buttons.append(
+            f'<button type="button" class="tab" role="tab" id="tab-{k}" aria-controls="panel-{k}" '
+            f'aria-selected="{selected}" tabindex="{0 if k == 0 else -1}" data-nombre="{name}">{name}</button>'
+        )
+        panels.append(
+            f'<div class="tabpanel" role="tabpanel" id="panel-{k}" aria-labelledby="tab-{k}" tabindex="0"'
+            f'{"" if k == 0 else " hidden"}><p class="tab-desc">{html.escape(tab.get("descripcion") or "")}</p>'
+            f'<div class="charts"></div></div>'
+        )
+    return (
+        '<div class="tablist" role="tablist" aria-label="Secciones del análisis">' + "".join(buttons) + "</div>"
+        + "".join(panels)
+    )
 
 
 def _json_for_script(obj) -> str:
@@ -109,13 +149,24 @@ TEMPLATE = r"""<!doctype html>
 <title>__TITLE__</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.3/plotly.min.js"></script>
 <style>
+/* Paleta del observatorio.
+   --accent: chips, botones y pestaña activa; también la serie única de los gráficos.
+   --yes / --no: series sí/no (el valor que importa en color fuerte, "no" en gris apagado).
+   --seq0 → --seq1: escala secuencial de un solo tono para el mapa de calor (arranca en un tono visible).
+   --c1…--c6: series con más de dos categorías. */
 :root {
-  --bg: #f6f4f1; --panel: #ffffff; --ink: #1f2430; --muted: #5f6673; --line: #e3ded7;
-  --accent: #9c4f2e; --accent-soft: #f3e3da; --s1: #9c4f2e; --s2: #2f6f8f; --s3: #6b8e3a; --s4: #b8862b; --s5: #7a5c99; --s6: #c25b6b;
+  --bg: #eef1f5; --panel: #ffffff; --ink: #15202e; --muted: #4a5667; --line: #d5dce5;
+  --accent: #1d5fa8; --on-accent: #ffffff; --accent-soft: #e4edf8;
+  --yes: #c4314b; --no: #848f9e;
+  --seq0: #c8daf0; --seq1: #0f3a73;
+  --c1: #1d5fa8; --c2: #0d857c; --c3: #b0670a; --c4: #6c4fb0; --c5: #4a5667; --c6: #c4314b;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #15171c; --panel: #1f232a; --ink: #eceae6; --muted: #a3a8b3; --line: #343a44;
-    --accent: #e08a62; --accent-soft: #3a2a23; --s1: #e08a62; --s2: #6db3d6; --s3: #a3c76d; --s4: #e2b55a; --s5: #b394d6; --s6: #e88a99; }
+  :root { --bg: #0e1319; --panel: #17202b; --ink: #e6ebf1; --muted: #a9b4c2; --line: #2d3948;
+    --accent: #78a8ec; --on-accent: #0b1422; --accent-soft: #1d2e45;
+    --yes: #f26d7d; --no: #66727f;
+    --seq0: #2a4266; --seq1: #b3d0ff;
+    --c1: #78a8ec; --c2: #4cc2b5; --c3: #e3a54d; --c4: #b69cf0; --c5: #a9b4c2; --c6: #f26d7d; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
@@ -133,11 +184,22 @@ legend { font-weight: 600; font-size: .85rem; margin-bottom: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips label { font-size: .8rem; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; cursor: pointer; user-select: none; }
 .chips input { position: absolute; opacity: 0; }
-.chips label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chips label:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .chips label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .range { display: flex; gap: 6px; }
 .range input { width: 100%; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
 button { font: inherit; border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 8px; padding: 6px 10px; cursor: pointer; width: 100%; }
+button:hover { background: var(--accent-soft); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs { min-width: 0; }
+.tablist { display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain; border-bottom: 1px solid var(--line); scrollbar-width: thin; padding: 2px 2px 0; }
+.tablist .tab { flex: 0 0 auto; width: auto; white-space: nowrap; border: 0; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0;
+  color: var(--muted); background: transparent; padding: 10px 14px 9px; font-weight: 600; font-size: .92rem; }
+.tablist .tab:hover { color: var(--ink); background: var(--accent-soft); }
+.tablist .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-soft); }
+.tablist .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tab-desc { margin: 12px 0 14px; font-size: .95rem; }
+.tabpanel:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
 .content { display: grid; gap: 16px; min-width: 0; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
@@ -177,7 +239,7 @@ footer { max-width: 1280px; margin: 0 auto; padding: 0 16px 30px; color: var(--m
       <h2>Hallazgos</h2>
       <ul class="findings" id="findings"></ul>
     </section>
-    <div class="charts" id="charts"></div>
+    <div class="tabs" id="charts">__TABS__</div>
     <section class="panel">
       <details>
         <summary>Calidad del dato: problemas encontrados y cómo se han tratado</summary>
@@ -194,7 +256,17 @@ const QUALITY = __QUALITY__;
 const COLS = Object.keys(DATA);
 const N = DATA[COLS[0]].v.length;
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const PALETTE = () => ["--s1","--s2","--s3","--s4","--s5","--s6"].map(css);
+const CATS = () => ["--c1","--c2","--c3","--c4","--c5","--c6"].map(css);
+// Colores de las series: sí/no siempre igual (sí fuerte, no apagado); serie única en el acento; resto, paleta categórica.
+function seriesColors(groups) {
+  if (groups.length === 1 && groups[0] === "_") return [css("--accent")];
+  if (groups.every(g => g === "sí" || g === "no")) return groups.map(g => css(g === "sí" ? "--yes" : "--no"));
+  const P = CATS(); return groups.map((g, k) => P[k % P.length]);
+}
+// Nombre de columna legible: guiones bajos fuera y tildes que faltan en los nombres técnicos.
+const WORDS = {limite: "límite", vehiculos: "vehículos", kmh: "(km/h)", m: "(m)"};
+const human = col => String(col || "").split("_").map(w => WORDS[w] || w.replace(/cion$/, "ción")).join(" ");
+const slug = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const fmt = (x, d = 0) => x == null || isNaN(x) ? "–" : x.toLocaleString("es-ES", {maximumFractionDigits: d, minimumFractionDigits: d});
 const value = (col, i) => { const c = DATA[col], v = c.v[i]; return v == null ? null : c.t === "cat" ? c.c[v] : v; };
 
@@ -205,7 +277,7 @@ function buildFilters() {
   for (const col of SPEC.filtros || []) {
     const c = DATA[col]; if (!c) continue;
     const fs = document.createElement("fieldset");
-    fs.innerHTML = `<legend>${col.replaceAll("_", " ")}</legend>`;
+    fs.innerHTML = `<legend></legend>`; fs.querySelector("legend").textContent = human(col);
     if (c.t === "cat") {
       state[col] = {type: "cat", sel: new Set()};
       const chips = document.createElement("div"); chips.className = "chips";
@@ -281,9 +353,9 @@ const baseLayout = () => ({
   legend: {orientation: "h", y: -0.25}, bargap: 0.25, hoverlabel: {font: {family: "system-ui"}},
 });
 function drawChart(chart, el, rows) {
-  const L = baseLayout(), P = PALETTE(); let traces = [];
+  const L = baseLayout(); let traces = [];
   if (chart.tipo === "histograma") {
-    traces = [{type: "histogram", x: rows.map(i => DATA[chart.x].v[i]).filter(v => v != null), marker: {color: P[0]}, nbinsx: chart.intervalos || 40,
+    traces = [{type: "histogram", x: rows.map(i => DATA[chart.x].v[i]).filter(v => v != null), marker: {color: css("--accent")}, nbinsx: chart.intervalos || 40,
       hovertemplate: "%{x}<br>%{y} registros<extra></extra>"}];
     L.yaxis.title = {text: "registros"};
   } else if (chart.tipo === "calor") {
@@ -296,7 +368,7 @@ function drawChart(chart, el, rows) {
     const X = orderedKeys(chart, chart.x, xs), Y = orderedKeys(chart, chart.y, ys);
     const rate = !!chart.columna;
     const z = Y.map(b => X.map(a => { const c = counts.get(a + "\u0000" + b); return !c ? null : rate ? (c.n >= 20 ? 100 * c.h / c.n : null) : c.n; }));
-    traces = [{type: "heatmap", x: X, y: Y, z, colorscale: [[0, css("--panel")], [1, P[0]]], xgap: 2, ygap: 2,
+    traces = [{type: "heatmap", x: X, y: Y, z, colorscale: [[0, css("--seq0")], [1, css("--seq1")]], xgap: 2, ygap: 2,
       hovertemplate: `%{x} · %{y}<br>${rate ? "%{z:.1f}%" : "%{z} registros"}<extra></extra>`, colorbar: {thickness: 10}}];
     L.yaxis.rangemode = undefined;
   } else if (chart.tipo === "tasa") {
@@ -309,13 +381,14 @@ function drawChart(chart, el, rows) {
     }
     const X = orderedKeys(chart, chart.x, keys);
     const groups = groupCol ? orderedKeys({}, groupCol, new Set([...agg.keys()].map(k => k.split("\u0000")[0]))) : ["_"];
+    const colors = seriesColors(groups);
     traces = groups.map((g, gi) => {
       const cs = X.map(k => agg.get(g + "\u0000" + k) || {n: 0, h: 0});
       return {type: "bar", name: g === "_" ? "" : g, x: X, y: cs.map(c => c.n ? 100 * c.h / c.n : null), customdata: cs.map(c => c.n),
-        marker: {color: P[gi % P.length]}, hovertemplate: `%{x}${g === "_" ? "" : " · " + g}<br>%{y:.1f}% (n=%{customdata})<extra></extra>`};
+        marker: {color: colors[gi]}, hovertemplate: `%{x}${g === "_" ? "" : " · " + g}<br>%{y:.1f}% (n=%{customdata})<extra></extra>`};
     });
     L.barmode = "group"; L.showlegend = !!groupCol;
-    L.yaxis.title = {text: `% ${chart.columna.replaceAll("_", " ")} = ${chart.valor}`}; L.yaxis.ticksuffix = "%";
+    L.yaxis.title = {text: `% ${human(chart.columna)} = ${chart.valor}`}; L.yaxis.ticksuffix = "%";
   } else { // barras y linea_tiempo
     const agg = new Map(), keys = new Set(); const groupCol = chart.color;
     for (const i of rows) {
@@ -328,10 +401,11 @@ function drawChart(chart, el, rows) {
     if (chart.tipo === "barras" && !groupCol && DATA[chart.x].t === "cat" && !chart.orden_natural) X.sort((a, b) => (agg.get("_\u0000" + b) || 0) - (agg.get("_\u0000" + a) || 0));
     const line = chart.tipo === "linea_tiempo";
     const horizontal = !line && chart.horizontal;
+    const colors = seriesColors(groups);
     traces = groups.map((g, gi) => {
       const ys = X.map(k => agg.get(g + "\u0000" + k) || 0);
       const t = {type: line ? "scatter" : "bar", mode: line ? "lines" : undefined, name: g === "_" ? "" : g,
-        marker: {color: P[gi % P.length]}, line: line ? {color: P[gi % P.length], width: 2} : undefined,
+        marker: {color: colors[gi]}, line: line ? {color: colors[gi], width: 2} : undefined,
         hovertemplate: `%{${horizontal ? "y" : "x"}}${g === "_" ? "" : " · " + g}<br>%{${horizontal ? "x" : "y"}} registros<extra></extra>`};
       if (horizontal) { t.orientation = "h"; t.x = ys; t.y = X; } else { t.x = X; t.y = ys; }
       return t;
@@ -339,9 +413,11 @@ function drawChart(chart, el, rows) {
     L.barmode = "stack"; L.showlegend = !!groupCol;
     if (horizontal) { L.yaxis.autorange = "reversed"; L.xaxis.title = {text: "registros"}; } else L.yaxis.title = {text: "registros"};
   }
-  if (chart.color) L.legend.title = {text: chart.color.replaceAll("_", " ") + ": "};
-  if (!(chart.tipo === "barras" && chart.horizontal)) L.xaxis.title = {text: (chart.x || "").replaceAll("_", " ")};
-  if (chart.tipo === "calor") L.yaxis.title = {text: chart.y.replaceAll("_", " ")};
+  if (chart.color) L.legend.title = {text: human(chart.color) + ": "};
+  if (!(chart.tipo === "barras" && chart.horizontal)) L.xaxis.title = {text: human(chart.x)};
+  if (chart.tipo === "calor") L.yaxis.title = {text: human(chart.y)};
+  // Números sin tramos (p. ej. límite 30/50/70) en barras y tasas: categorías, no eje continuo
+  if ((chart.tipo === "tasa" || chart.tipo === "barras") && !chart.tramos && DATA[chart.x] && DATA[chart.x].t === "num") L[chart.tipo === "barras" && chart.horizontal ? "yaxis" : "xaxis"].type = "category";
   Plotly.react(el, traces, L, {displaylogo: false, responsive: true});
 }
 
@@ -354,9 +430,46 @@ function kpiValue(k, rows) {
 
 // ---------- Render ----------
 const chartEls = [];
+const TAB_BTNS = [...document.querySelectorAll("#charts .tab")];
+const TAB_PANELS = [...document.querySelectorAll("#charts .tabpanel")];
+let activeTab = 0, lastRows = [];
+function gridFor(chart) {
+  if (!TAB_PANELS.length) return document.querySelector("#charts .charts");
+  const k = TAB_BTNS.findIndex(b => b.dataset.nombre === chart.pestana);
+  return TAB_PANELS[k < 0 ? 0 : k].querySelector(".charts");  // sin pestaña (o desconocida): a la primera
+}
+const tabOf = grid => TAB_PANELS.length ? TAB_PANELS.findIndex(p => p.contains(grid)) : 0;
+function tabFromHash() {
+  const m = /(?:^#|&)pestana=([^&]*)/.exec(location.hash); if (!m) return null;
+  let v; try { v = decodeURIComponent(m[1]); } catch (e) { v = m[1]; }
+  const k = TAB_BTNS.findIndex(b => slug(b.dataset.nombre) === slug(v));
+  return k < 0 ? null : k;
+}
+function showTab(k, {focus = false, hash = true} = {}) {
+  if (!TAB_BTNS.length) return;
+  activeTab = k;
+  TAB_BTNS.forEach((b, j) => { b.setAttribute("aria-selected", j === k ? "true" : "false"); b.tabIndex = j === k ? 0 : -1; });
+  TAB_PANELS.forEach((p, j) => { p.hidden = j !== k; });
+  if (focus) { TAB_BTNS[k].focus(); TAB_BTNS[k].scrollIntoView({block: "nearest", inline: "nearest"}); }
+  if (hash) history.replaceState(null, "", "#pestana=" + slug(TAB_BTNS[k].dataset.nombre));
+  // Plotly mide mal en contenedores ocultos: se dibuja (o se redimensiona) al mostrar la pestaña
+  for (const e of chartEls) if (e.tab === k) { if (e.dirty) { drawChart(e.chart, e.el, lastRows); e.dirty = false; } else Plotly.Plots.resize(e.el); }
+}
+function setupTabs() {
+  if (!TAB_BTNS.length) return;
+  TAB_BTNS.forEach((b, k) => b.addEventListener("click", () => showTab(k)));
+  document.querySelector("#charts .tablist").addEventListener("keydown", ev => {
+    const n = TAB_BTNS.length, cur = Math.max(0, TAB_BTNS.indexOf(ev.target)), moves = {ArrowRight: cur + 1, ArrowLeft: cur - 1 + n, Home: 0, End: n - 1};
+    if (!(ev.key in moves)) return;
+    ev.preventDefault(); showTab(moves[ev.key] % n, {focus: true});
+  });
+  window.addEventListener("hashchange", () => { const k = tabFromHash(); if (k != null && k !== activeTab) showTab(k, {hash: false}); });
+  const k = tabFromHash();
+  if (k != null) showTab(k, {hash: false});
+}
 function setup() {
   buildFilters();
-  const box = document.getElementById("charts");
+  setupTabs();
   for (const chart of SPEC.graficos || []) {
     const sec = document.createElement("section"); sec.className = "panel chart";
     sec.innerHTML = `<h2></h2><div class="plot" role="img"></div><p></p>`;
@@ -364,7 +477,8 @@ function setup() {
     sec.querySelector(".plot").setAttribute("aria-label", chart.titulo || "gráfico");
     sec.querySelector("p").textContent = chart.explicacion || "";
     if (chart.ancho_completo) sec.style.gridColumn = "1 / -1";
-    box.append(sec); chartEls.push([chart, sec.querySelector(".plot")]);
+    const grid = gridFor(chart); grid.append(sec);
+    chartEls.push({chart, el: sec.querySelector(".plot"), tab: tabOf(grid), dirty: true});
   }
   const f = SPEC.hallazgos || [];
   if (f.length) { document.getElementById("findings-panel").hidden = false; document.getElementById("findings").innerHTML = ""; for (const t of f) { const li = document.createElement("li"); li.textContent = t; document.getElementById("findings").append(li); } }
@@ -373,7 +487,7 @@ function setup() {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 }
 function render() {
-  const rows = filteredRows();
+  const rows = lastRows = filteredRows();
   document.getElementById("count").textContent = `${fmt(rows.length)} de ${fmt(N)} registros`;
   const kb = document.getElementById("kpis"); kb.innerHTML = "";
   for (const k of SPEC.kpis || [{etiqueta: "Registros", tipo: "conteo"}]) {
@@ -382,7 +496,8 @@ function render() {
     d.querySelector(".label").textContent = k.etiqueta; d.querySelector(".value").textContent = r.v; d.querySelector(".sub").textContent = r.sub;
     kb.append(d);
   }
-  for (const [chart, el] of chartEls) drawChart(chart, el, rows);
+  // Se dibujan los gráficos visibles; los de otras pestañas quedan pendientes hasta que se muestren
+  for (const e of chartEls) { if (!TAB_PANELS.length || e.tab === activeTab) { drawChart(e.chart, e.el, rows); e.dirty = false; } else e.dirty = true; }
 }
 function renderQuality() {
   const q = QUALITY, box = document.getElementById("quality");

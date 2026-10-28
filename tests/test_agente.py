@@ -78,6 +78,44 @@ class DashboardTest(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(out.exists())
 
+    def _tab_session(self):
+        session = datos.load_csv(CSV)
+        datos.detect_issues(session)
+        datos.apply_operations(session, automatic_operations(session))
+        return session
+
+    def test_plan_with_tabs_builds_tab_bar(self):
+        session = self._tab_session()
+        spec = {"titulo": "t", "pestanas": [{"nombre": "Velocidad", "descripcion": "frase A"},
+                                             {"nombre": "Dónde y cuándo", "descripcion": "frase B"}],
+                "graficos": [{"tipo": "barras", "x": "distrito", "pestana": "Velocidad"},
+                             {"tipo": "barras", "x": "tipo_accidente", "pestana": "Dónde y cuándo"},
+                             {"tipo": "barras", "x": "alumbrado"}]}
+        self.assertEqual(validate_spec(session, spec), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            html = build_dashboard(session, spec, Path(tmp) / "d.html").read_text(encoding="utf-8")
+        self.assertIn('role="tablist"', html)
+        self.assertEqual(html.count('role="tab"'), 2)
+        self.assertEqual(html.count('role="tabpanel"'), 2)
+        self.assertIn("frase B", html)
+
+    def test_plan_without_tabs_has_no_tab_bar(self):
+        session = self._tab_session()
+        spec = automatic_spec(session)
+        self.assertNotIn("pestanas", spec)
+        with tempfile.TemporaryDirectory() as tmp:
+            html = build_dashboard(session, spec, Path(tmp) / "d.html").read_text(encoding="utf-8")
+        self.assertNotIn('role="tablist"', html)
+        self.assertNotIn('role="tab"', html)
+        self.assertIn('<div class="charts"></div>', html)
+
+    def test_unknown_tab_is_an_error(self):
+        session = datos.load_csv(CSV)
+        spec = {"pestanas": [{"nombre": "Velocidad"}],
+                "graficos": [{"tipo": "barras", "x": "distrito", "pestana": "Entorno"}]}
+        errors = validate_spec(session, spec)
+        self.assertTrue(any("'Entorno'" in e and "pestanas" in e for e in errors))
+
     def test_example_plan_is_valid_json(self):
         plan = json.loads((ROOT / "ejemplos" / "accidentes_plan.json").read_text(encoding="utf-8"))
         self.assertIn("limpieza", plan)

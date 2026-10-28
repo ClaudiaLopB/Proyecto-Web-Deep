@@ -51,10 +51,14 @@ El data scientist escribe el plan; el backend lo ejecuta y el frontend lo pinta.
     "graficos": [ {"tipo": "barras|tasa|histograma|linea_tiempo|calor", "titulo": "...",
                    "x": "...", "y": "...", "color": "...", "columna": "...", "valor": "...",
                    "tramos": [0, 30, 50], "horizontal": false, "ancho_completo": false,
+                   "pestana": "nombre corto de la pestaña donde va el gráfico",
                    "explicacion": "la frase de negocio: la escribe el data scientist, la coloca el frontend"} ],
+    "pestanas": [ {"nombre": "...", "descripcion": "una frase: qué pregunta responde esta pestaña"} ],
     "hallazgos": ["frases con cifras obtenidas con agente.datos.query"]
   }
 }
 ```
+
+**Pestañas.** `pestanas` (opcional) fija el orden y la frase de cada pestaña; cada gráfico dice en `pestana` a cuál pertenece (el nombre tiene que coincidir). Si el plan no trae `pestanas`, la página no muestra pestañas y pinta todos los gráficos seguidos, como antes (así sigue funcionando el modo automático). Un gráfico sin `pestana` en un plan con pestañas va a la primera. Los filtros, los KPI y el contador quedan fuera de las pestañas y se aplican a todas; los hallazgos y el panel de calidad, también fuera.
 
 Dentro de la página, el backend vuelca los datos limpios como `DATA` (columnas codificadas), el plan como `SPEC` y el registro de limpieza como `QUALITY`. Toda la agregación que depende de los filtros la hace el JS del frontend sobre `DATA`.
