@@ -53,6 +53,35 @@ class CleaningTest(unittest.TestCase):
         self.assertEqual([r["velocidad_estimada_kmh"] for r in result["filas"]], ["0–50", "50–100", "100–200"])
 
 
+class MapTest(unittest.TestCase):
+    CSV_COORDS = ROOT / "tests" / "datos" / "actividades_con_coordenadas.csv"
+
+    def test_detects_coordinates(self):
+        session = datos.load_csv(self.CSV_COORDS)
+        self.assertEqual(datos.detect_coordinates(session.raw), {"lat": "latitud", "lon": "longitud"})
+
+    def test_no_coordinates_in_accidents(self):
+        self.assertIsNone(datos.detect_coordinates(datos.load_csv(CSV).raw))
+
+    def test_automatic_spec_adds_map(self):
+        session = datos.load_csv(self.CSV_COORDS)
+        datos.detect_issues(session)
+        datos.apply_operations(session, automatic_operations(session))
+        spec = automatic_spec(session)
+        self.assertEqual(spec["graficos"][0]["tipo"], "mapa")
+        self.assertEqual(validate_spec(session, spec), [])
+        with tempfile.TemporaryDirectory() as tmp:
+            html = build_dashboard(session, spec, Path(tmp) / "d.html").read_text(encoding="utf-8")
+        # Las coordenadas no se redondean al guardarlas en la página
+        self.assertIn(str(session.data["latitud"].iloc[0]), html)
+
+    def test_map_needs_valid_coordinates(self):
+        session = datos.load_csv(CSV)
+        datos.apply_operations(session, [])
+        errors = validate_spec(session, {"graficos": [{"tipo": "mapa", "titulo": "m", "lat": "edad_conductor", "lon": "hora"}]})
+        self.assertTrue(any("no son grados" in e for e in errors))
+
+
 class DashboardTest(unittest.TestCase):
     def test_automatic_spec_is_valid_and_builds(self):
         session = datos.load_csv(CSV)

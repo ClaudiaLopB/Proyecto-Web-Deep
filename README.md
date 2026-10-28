@@ -68,10 +68,11 @@ Si no hay `ANTHROPIC_API_KEY`, el programa usa el modo automático. Si el agente
 ## El dashboard
 
 - **Filtros** (chips para categorías, rangos para números y fechas) que actualizan a la vez todos los KPI y gráficos.
-- **Tipos de gráfico**: `barras`, `tasa` (% de casos que cumplen una condición, por ejemplo "con heridos"), `histograma`, `linea_tiempo` y `calor`. Todos admiten desglose por color y tramos numéricos.
+- **Tipos de gráfico**: `barras`, `tasa` (% de casos que cumplen una condición, por ejemplo "con heridos"), `histograma`, `linea_tiempo`, `calor` y `mapa`. Todos admiten desglose por color y tramos numéricos.
+- **Mapa**: si el CSV tiene columnas de latitud y longitud en grados (`lat`/`latitud`/`latitude` y `lon`/`lng`/`longitud`/`longitude`), el dashboard añade un mapa de OpenStreetMap con un punto por registro, coloreado por categoría y filtrado igual que el resto. Se puede probar con `tests/datos/actividades_con_coordenadas.csv`.
 - **Hallazgos** redactados por el agente.
 - **Panel de calidad del dato**: qué problemas se encontraron y qué se hizo con cada uno.
-- Modo claro y oscuro, adaptado al móvil. Plotly.js se carga desde cdnjs, así que hace falta conexión.
+- Modo claro y oscuro, adaptado al móvil. Plotly.js y los mapas se cargan de internet, así que hace falta conexión.
 
 ## Ejemplo: accidentes de tráfico urbanos
 
