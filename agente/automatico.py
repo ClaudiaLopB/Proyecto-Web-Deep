@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .datos import Session, detect_coordinates, normalize_key
+from .datos import Session, normalize_key
 
 # Palabras que suelen indicar la variable "resultado" en un dataset
 TARGET_HINTS = ("lesion", "herid", "grave", "muert", "fallec", "victim", "resultado", "objetivo", "target")
@@ -44,9 +44,6 @@ def automatic_spec(session: Session) -> dict:
     categorical = [c for c in df.columns if _is_text(df[c]) and 1 < df[c].nunique() <= 15]
     numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     dates = [c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])]
-    coords = detect_coordinates(session.raw)
-    if coords:
-        numeric = [c for c in numeric if c not in coords.values()]
     binary = [c for c in categorical if _yes_no(df, c)]
     target = next((c for c in binary if any(h in c.lower() for h in TARGET_HINTS)), binary[0] if binary else None)
     yes = None
@@ -62,12 +59,6 @@ def automatic_spec(session: Session) -> dict:
         kpis.append({"etiqueta": f"Media {col.replace('_', ' ')}", "tipo": "media", "columna": col})
 
     charts = []
-    if coords:
-        multi_cats = [c for c in categorical if c not in binary]
-        label = next((c for c in df.columns if _is_text(df[c]) and df[c].nunique() > 15), None)
-        charts.append({"tipo": "mapa", "titulo": "Dónde están los datos", **coords,
-                       "color": multi_cats[0] if multi_cats else target, "etiqueta": label,
-                       "explicacion": "Cada punto es un registro. Usa la rueda o los dedos para acercarte."})
     if dates:
         charts.append({"tipo": "linea_tiempo", "titulo": f"Registros por mes ({dates[0]})", "x": dates[0], "ancho_completo": True})
     multi = [c for c in categorical if c not in binary]

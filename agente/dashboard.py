@@ -6,10 +6,9 @@ La especificación es un diccionario que puede escribir el agente de IA o el mod
   "titulo": str, "subtitulo": str,
   "filtros": [columna, ...],
   "kpis": [{"etiqueta": str, "tipo": "conteo" | "media" | "tasa", "columna": str, "valor": str}],
-  "graficos": [{"tipo": "barras" | "tasa" | "histograma" | "linea_tiempo" | "calor" | "mapa",
+  "graficos": [{"tipo": "barras" | "tasa" | "histograma" | "linea_tiempo" | "calor",
                 "titulo": str, "x": str, "y": str, "color": str,
-                "columna": str, "valor": str, "tramos": [números], "explicacion": str,
-                "lat": str, "lon": str, "etiqueta": str  (solo mapa)}],
+                "columna": str, "valor": str, "tramos": [números], "explicacion": str}],
   "hallazgos": [str],
   "pie": str  (opcional, texto del pie de página)
 }
@@ -25,7 +24,7 @@ import pandas as pd
 
 from .datos import Session
 
-CHART_TYPES = {"barras", "tasa", "histograma", "linea_tiempo", "calor", "mapa"}
+CHART_TYPES = {"barras", "tasa", "histograma", "linea_tiempo", "calor"}
 
 
 def validate_spec(session: Session, spec: dict) -> list[str]:
@@ -41,14 +40,7 @@ def validate_spec(session: Session, spec: dict) -> list[str]:
     for chart in spec.get("graficos", []):
         if chart.get("tipo") not in CHART_TYPES:
             errors.append(f"gráfico '{chart.get('titulo')}': tipo desconocido '{chart.get('tipo')}'")
-        if chart.get("tipo") == "mapa":
-            for key, limit in (("lat", 90), ("lon", 180)):
-                col = chart.get(key)
-                if col not in cols:
-                    errors.append(f"gráfico '{chart.get('titulo')}': un mapa necesita '{key}' con una columna existente")
-                elif not pd.api.types.is_numeric_dtype(session.data[col]) or session.data[col].abs().max() > limit:
-                    errors.append(f"gráfico '{chart.get('titulo')}': '{col}' no son grados de {key}")
-        for key in ("x", "y", "color", "columna", "etiqueta"):
+        for key in ("x", "y", "color", "columna"):
             if chart.get(key) and chart[key] not in cols:
                 errors.append(f"gráfico '{chart.get('titulo')}': columna inexistente '{chart[key]}' en '{key}'")
         if chart.get("tipo") == "tasa" and not (chart.get("columna") and chart.get("valor") is not None):
@@ -63,7 +55,7 @@ def _column_payload(series: pd.Series) -> dict:
     if pd.api.types.is_datetime64_any_dtype(series):
         return {"t": "fecha", "v": [None if pd.isna(v) else v.strftime("%Y-%m-%d") for v in series]}
     if pd.api.types.is_numeric_dtype(series):
-        return {"t": "num", "v": [None if pd.isna(v) else (int(v) if float(v).is_integer() else round(float(v), 6)) for v in series]}
+        return {"t": "num", "v": [None if pd.isna(v) else (int(v) if float(v).is_integer() else round(float(v), 2)) for v in series]}
     cats = sorted(series.dropna().unique().tolist(), key=_natural_key)
     index = {c: i for i, c in enumerate(cats)}
     return {"t": "cat", "c": cats, "v": [None if v is None or pd.isna(v) else index[v] for v in series]}
@@ -156,7 +148,6 @@ button { font: inherit; border: 1px solid var(--accent); color: var(--accent); b
 @media (max-width: 520px) { .charts { grid-template-columns: 1fr; } }
 .chart { min-width: 0; }
 .chart .plot { height: 340px; }
-.chart .plot.map { height: 460px; border-radius: 8px; overflow: hidden; }
 .chart p { color: var(--muted); font-size: .85rem; margin: 6px 0 0; }
 ul.findings { margin: 0; padding-left: 20px; } ul.findings li { margin-bottom: 6px; }
 table { width: 100%; border-collapse: collapse; font-size: .82rem; }
@@ -291,7 +282,6 @@ const baseLayout = () => ({
 });
 function drawChart(chart, el, rows) {
   const L = baseLayout(), P = PALETTE(); let traces = [];
-  if (chart.tipo === "mapa") return drawMap(chart, el, rows);
   if (chart.tipo === "histograma") {
     traces = [{type: "histogram", x: rows.map(i => DATA[chart.x].v[i]).filter(v => v != null), marker: {color: P[0]}, nbinsx: chart.intervalos || 40,
       hovertemplate: "%{x}<br>%{y} registros<extra></extra>"}];
@@ -355,41 +345,6 @@ function drawChart(chart, el, rows) {
   Plotly.react(el, traces, L, {displaylogo: false, responsive: true});
 }
 
-// ---------- Mapa ----------
-const MAX_POINTS = 20000;
-function drawMap(chart, el, rows) {
-  const P = PALETTE(), lat = DATA[chart.lat].v, lon = DATA[chart.lon].v;
-  let pts = rows.filter(i => lat[i] != null && lon[i] != null);
-  const total = pts.length;
-  if (pts.length > MAX_POINTS) { const step = pts.length / MAX_POINTS; pts = Array.from({length: MAX_POINTS}, (_, k) => pts[Math.floor(k * step)]); }
-  const groupCol = chart.color && DATA[chart.color].t === "cat" ? chart.color : null;
-  const groups = groupCol ? DATA[groupCol].c : ["_"];
-  const label = i => chart.etiqueta ? String(value(chart.etiqueta, i) ?? "") : "";
-  const traces = groups.map((g, gi) => {
-    const sel = groupCol ? pts.filter(i => value(groupCol, i) === g) : pts;
-    return {type: "scattermap", mode: "markers", name: g === "_" ? "" : g,
-      lat: sel.map(i => lat[i]), lon: sel.map(i => lon[i]), text: sel.map(label),
-      marker: {size: total > 3000 ? 5 : 8, color: P[gi % P.length], opacity: 0.75},
-      hovertemplate: `%{text}${g === "_" ? "" : "<br>" + g}<br>%{lat:.5f}, %{lon:.5f}<extra></extra>`};
-  }).filter(t => t.lat.length);
-  const view = mapView(pts.map(i => lat[i]), pts.map(i => lon[i]));
-  const L = {margin: {l: 0, r: 0, t: 0, b: 0}, paper_bgcolor: "rgba(0,0,0,0)", showlegend: !!groupCol,
-    legend: {orientation: "h", y: -0.02, yanchor: "top", title: groupCol ? {text: groupCol.replaceAll("_", " ") + ": "} : undefined},
-    font: {family: "system-ui, sans-serif", color: css("--ink"), size: 12},
-    map: {style: "open-street-map", center: view.center, zoom: view.zoom}};
-  Plotly.react(el, traces, L, {displaylogo: false, responsive: true, scrollZoom: true});
-  const note = el.parentElement.querySelector(".map-note");
-  if (note) note.textContent = total > MAX_POINTS ? `Se muestran ${fmt(MAX_POINTS)} de ${fmt(total)} puntos.` : `${fmt(total)} puntos con coordenadas.`;
-}
-function mapView(lats, lons) {
-  if (!lats.length) return {center: {lat: 40.4168, lon: -3.7038}, zoom: 10};
-  const q = (a, p) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(p * (s.length - 1))]; };
-  // Se ignoran el 1 % de puntos más alejados para que un dato raro no aleje el zoom
-  const la0 = q(lats, .01), la1 = q(lats, .99), lo0 = q(lons, .01), lo1 = q(lons, .99);
-  const span = Math.max(la1 - la0, (lo1 - lo0) * 0.6, 0.002);
-  return {center: {lat: (la0 + la1) / 2, lon: (lo0 + lo1) / 2}, zoom: Math.max(1, Math.min(16, Math.log2(180 / span) - 0.3))};
-}
-
 // ---------- KPIs ----------
 function kpiValue(k, rows) {
   if (k.tipo === "media") { const xs = rows.map(i => DATA[k.columna].v[i]).filter(v => v != null); return {v: fmt(xs.reduce((a, b) => a + b, 0) / xs.length, 1), sub: `${fmt(xs.length)} con dato`}; }
@@ -408,11 +363,7 @@ function setup() {
     sec.querySelector("h2").textContent = chart.titulo || "";
     sec.querySelector(".plot").setAttribute("aria-label", chart.titulo || "gráfico");
     sec.querySelector("p").textContent = chart.explicacion || "";
-    if (chart.ancho_completo || chart.tipo === "mapa") sec.style.gridColumn = "1 / -1";
-    if (chart.tipo === "mapa") {
-      sec.querySelector(".plot").classList.add("map");
-      const note = document.createElement("p"); note.className = "map-note"; sec.append(note);
-    }
+    if (chart.ancho_completo) sec.style.gridColumn = "1 / -1";
     box.append(sec); chartEls.push([chart, sec.querySelector(".plot")]);
   }
   const f = SPEC.hallazgos || [];

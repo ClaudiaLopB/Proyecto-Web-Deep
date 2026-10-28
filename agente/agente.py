@@ -37,7 +37,6 @@ Criterios para el dashboard:
 - Pocos KPI (3-5) y entre 5 y 9 gráficos, cada uno con una `explicacion` de una frase que diga qué mirar.
 - Prefiere tasas (`tipo: "tasa"`) a conteos cuando la pregunta es de riesgo o gravedad: un conteo alto puede \
 deberse solo a que hay más casos de ese tipo.
-- Si `perfilar_dataset` encuentra coordenadas (latitud/longitud), incluye un gráfico `mapa` al principio.
 - Usa `tramos` para agrupar variables numéricas continuas en las tasas y mapas de calor.
 - Los filtros deben ser las dimensiones por las que alguien querría segmentar (zona, tipo, condiciones).
 - Los hallazgos (4-7) son frases concretas, prudentes (correlación no es causalidad) y que mencionen las \
@@ -100,8 +99,7 @@ def run_agent(session: datos.Session, output: Path, goal: str | None = None,
         Args:
             especificacion: Objeto con "titulo", "subtitulo", "filtros" (columnas), "kpis" (lista de
                 {"etiqueta", "tipo": "conteo"|"media"|"tasa", "columna", "valor"}), "graficos" (lista de
-                {"tipo": "barras"|"tasa"|"histograma"|"linea_tiempo"|"calor"|"mapa", "titulo", "x", "y" (solo calor),
-                "lat", "lon", "etiqueta" (solo mapa: columnas de latitud, longitud y texto al pasar el ratón),
+                {"tipo": "barras"|"tasa"|"histograma"|"linea_tiempo"|"calor", "titulo", "x", "y" (solo calor),
                 "color" (columna para desglosar, opcional), "columna" y "valor" (para tasas o calor de tasas),
                 "tramos" (cortes numéricos de x, opcional), "horizontal" (bool), "ancho_completo" (bool),
                 "explicacion"}) y "hallazgos" (lista de frases).

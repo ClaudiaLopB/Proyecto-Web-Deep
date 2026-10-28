@@ -84,25 +84,6 @@ def _to_number(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series.astype(str).str.strip().str.replace(",", ".", regex=False), errors="coerce")
 
 
-LAT_NAMES = ("lat", "latitud", "latitude", "coord_lat", "y_lat")
-LON_NAMES = ("lon", "lng", "long", "longitud", "longitude", "coord_lon", "x_lon")
-
-
-def detect_coordinates(df: pd.DataFrame) -> dict | None:
-    """Busca un par de columnas latitud/longitud en grados (por nombre y por rango de valores)."""
-    def find(names: tuple[str, ...], limit: float) -> str | None:
-        for col in df.columns:
-            key = normalize_key(col).replace(" ", "_")
-            if key in names or any(key.startswith(n + "_") or key.endswith("_" + n) for n in names):
-                x = _to_number(df[col])
-                if x.notna().mean() >= 0.5 and x.dropna().abs().le(limit).all():
-                    return col
-        return None
-
-    lat, lon = find(LAT_NAMES, 90), find(LON_NAMES, 180)
-    return {"lat": lat, "lon": lon} if lat and lon else None
-
-
 def profile(session: Session) -> dict:
     """Resumen del dataset en bruto: tipos, ausencias, estadísticos y categorías."""
     df = session.raw
@@ -138,7 +119,6 @@ def profile(session: Session) -> dict:
         "filas": len(df),
         "columnas": len(df.columns),
         "filas_duplicadas": int(df.duplicated().sum()),
-        "coordenadas": detect_coordinates(df),
         "detalle": columns,
     }
 
