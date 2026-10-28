@@ -10,6 +10,50 @@ Agente de IA que **convierte un conjunto de datos (CSV) en un dashboard interact
 
 El agente usa Claude (`claude-opus-5-5`) con *tool use*. Las herramientas son funciones deterministas en pandas, así que el modelo decide **qué** hacer y el código lo **calcula**.
 
+## Arquitectura de siete agentes
+
+El proyecto se trabaja con un equipo de agentes de Claude Code (ver `CLAUDE.md` y `.claude/agents/`):
+
+```mermaid
+flowchart TB
+  A["ALUMNO<br/>elige el caso, fija el alcance, aprueba"]
+  O["ORQUESTADOR (sesión principal)<br/>trocea, reparte, sincroniza, cierra fases<br/><i>no escribe código de producto</i>"]
+  E["EXTRACTOR<br/>dossier + CSV, forma y tipos, trampas"]
+  subgraph CC["CONTEXTO COMPARTIDO · docs/contexto/"]
+    DS["DATA SCIENTIST<br/>análisis y frase de negocio"]
+    BE["BACKEND<br/>agente/datos.py"]
+    FE["FRONTEND<br/>agente/dashboard.py"]
+  end
+  subgraph CL1["CONTEXTO LIMPIO"]
+    T["TESTER<br/>encargo + página: requisitos incumplidos"]
+  end
+  subgraph CL2["CONTEXTO LIMPIO"]
+    C["CRÍTICO DE DISEÑO<br/>solo capturas: defectos de acabado"]
+  end
+  A -- "encargo, decisiones" --> O
+  O -- "parte de avance" --> A
+  O <--> E
+  E -- "CSV verificado + diario de trampas" --> DS
+  O <--> CC
+  DS <--> BE <--> FE
+  O <-- "artefacto terminado" --> T
+  O <-- "capturas, nada más" --> C
+```
+
+| Agente | Ficha | Contexto |
+|---|---|---|
+| Orquestador | `CLAUDE.md` | todo |
+| Extractor | `.claude/agents/extractor.md` | compartido |
+| Data scientist | `.claude/agents/data-scientist.md` | compartido |
+| Backend | `.claude/agents/backend.md` | compartido |
+| Frontend | `.claude/agents/frontend.md` | compartido |
+| Tester | `.claude/agents/tester.md` | limpio: encargo + página + CSV |
+| Crítico de diseño | `.claude/agents/critico-diseno.md` | limpio: solo capturas |
+
+El contexto compartido está en `docs/contexto/`: el encargo (`encargo.md`), el contrato de archivos y JSON (`contrato.md`), el diario de trampas (`diario_trampas.md`) y el análisis (`analisis.md`).
+
+**Cómo usarlo:** abre Claude Code en la carpeta del proyecto y pídele, por ejemplo, *"Haz la fase de verificación"* o *"Nuevo caso: este CSV y este dossier"*. La sesión actúa de orquestador y llama a cada agente con su ficha. Para las capturas del crítico: `pip install -r requirements-dev.txt && python -m playwright install chromium`, y después `python scripts/capturas.py web/index.html`.
+
 ## Estructura
 
 ```
@@ -23,6 +67,9 @@ datos/            # dataset de ejemplo: accidentes de tráfico urbanos + su fich
 ejemplos/         # plan de ejemplo (limpieza + dashboard) para el dataset de accidentes
 web/index.html    # dashboard de ejemplo ya generado, para verlo en el navegador
 tests/            # tests (python -m unittest)
+.claude/agents/   # fichas de los seis agentes (el orquestador es la sesión principal, ver CLAUDE.md)
+docs/contexto/    # contexto compartido: encargo, contrato, diario de trampas y análisis
+scripts/          # capturas.py: capturas de la página para el crítico de diseño
 ```
 
 ## Instalación
