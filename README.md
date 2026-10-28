@@ -21,8 +21,7 @@ agente/
   __main__.py     # línea de comandos
 datos/            # dataset de ejemplo: accidentes de tráfico urbanos + su ficha (PDF)
 ejemplos/         # plan de ejemplo (limpieza + dashboard) para el dataset de accidentes
-web/index.html    # dashboard publicado en Vercel (se genera con el comando de abajo)
-vercel.json       # configuración de Vercel: sirve la carpeta web/ como web estática
+web/index.html    # dashboard de ejemplo ya generado, para verlo en el navegador
 tests/            # tests (python -m unittest)
 ```
 
@@ -85,25 +84,20 @@ Si no hay `ANTHROPIC_API_KEY`, el programa usa el modo automático. Si el agente
 
 `ejemplos/accidentes_plan.json` es un plan de referencia escrito a mano con las mismas herramientas que usa el agente. Sirve para comparar con lo que propone el agente.
 
-## Publicar en Vercel
+## Ver la web en local
 
-La web publicada es `web/index.html`, un archivo estático: Vercel no ejecuta Python ni el agente, solo sirve ese archivo.
-
-**Conectar el repositorio (una sola vez):**
-1. Entra en https://vercel.com/new con tu cuenta de GitHub.
-2. Importa el repositorio `ClaudiaLopB/Proyecto-Web-Deep`.
-3. Deja *Framework Preset* en **Other** y pulsa **Deploy**. El resto de la configuración la lee de `vercel.json`.
-
-Desde ese momento, **cada push a `main` vuelve a publicar la web automáticamente**.
-
-**Actualizar el dashboard publicado:** genera de nuevo `web/index.html` y haz push.
+`web/index.html` es el dashboard de ejemplo ya generado. Para verlo en el navegador:
 
 ```bash
-# con el plan de ejemplo
+cd web
+python -m http.server 8000
+```
+
+y abre http://localhost:8000. Para regenerarlo (con el plan de ejemplo o con el agente de IA):
+
+```bash
 python -m agente datos/accidentes_urbanos.csv --spec ejemplos/accidentes_plan.json --salida web/index.html
-# o con el agente de IA
 python -m agente datos/accidentes_urbanos.csv --contexto datos/ficha_accidentes_urbanos.pdf --salida web/index.html
-git add web/index.html && git commit -m "Actualiza el dashboard" && git push
 ```
 
 ## Tests
